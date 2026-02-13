@@ -10,6 +10,8 @@ from app.schemas.subscription import SubscriptionCreate, SubscriptionResponse, S
 from app.auth import get_current_user
 from app.subscription_utils import get_next_payment_date, iter_payment_dates_from_to
 
+router = APIRouter()
+
 SUBSCRIPTIONS_CATEGORY = "Подписки"
 
 
