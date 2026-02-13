@@ -21,6 +21,7 @@ class GoalUpdate(BaseModel):
 class GoalParticipantResponse(BaseModel):
     user_id: int
     username: str | None
+    email: str
     avatar_url: str | None
     contributed_amount: float
     is_creator: bool = False

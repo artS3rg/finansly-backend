@@ -28,6 +28,7 @@ def _build_participants(db: Session, goal: Goal) -> list[GoalParticipantResponse
             GoalParticipantResponse(
                 user_id=creator.id,
                 username=creator.username,
+                email=creator.email,
                 avatar_url=creator.avatar_url,
                 contributed_amount=goal.start_amount,
                 is_creator=True,
@@ -42,6 +43,7 @@ def _build_participants(db: Session, goal: Goal) -> list[GoalParticipantResponse
                 GoalParticipantResponse(
                     user_id=u.id,
                     username=u.username,
+                    email=u.email,
                     avatar_url=u.avatar_url,
                     contributed_amount=m.contributed_amount,
                     is_creator=False,
