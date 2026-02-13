@@ -18,5 +18,6 @@ class Goal(Base):
     completed_at = Column(DateTime, nullable=True)
     is_completed = Column(Boolean, default=False)
     
-    # Связь
+    # Связи
     user = relationship("User", back_populates="goals")
+    members = relationship("GoalMember", back_populates="goal", cascade="all, delete-orphan")

@@ -112,6 +112,19 @@ ALTER TABLE subscriptions DROP COLUMN payment_date;
 
 Для новой установки таблица создаётся с полем `payment_day` автоматически.
 
+### Таблица учёта списаний по подпискам (subscription_payments)
+
+При первом запуске после обновления кода таблица `subscription_payments` создаётся автоматически через `init_db()`. Если используете миграции вручную:
+
+```sql
+CREATE TABLE IF NOT EXISTS subscription_payments (
+    id SERIAL PRIMARY KEY,
+    subscription_id INTEGER NOT NULL REFERENCES subscriptions(id) ON DELETE CASCADE,
+    payment_date DATE NOT NULL,
+    UNIQUE(subscription_id, payment_date)
+);
+```
+
 ## Устранение проблем
 
 ### UnicodeDecodeError в psycopg2 на Windows (byte 0xc2, position 61)

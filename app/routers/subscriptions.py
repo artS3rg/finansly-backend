@@ -1,14 +1,42 @@
+from datetime import date, datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
 from app.models.user import User
-from app.models.subscription import Subscription
+from app.models.subscription import Subscription, SubscriptionPayment
+from app.models.transaction import Transaction
 from app.schemas.subscription import SubscriptionCreate, SubscriptionResponse, SubscriptionUpdate
 from app.auth import get_current_user
-from app.subscription_utils import get_next_payment_date
+from app.subscription_utils import get_next_payment_date, iter_payment_dates_from_to
 
-router = APIRouter()
+SUBSCRIPTIONS_CATEGORY = "Подписки"
+
+
+def _ensure_subscription_transactions(db: Session, user_id: int) -> None:
+    """Создаёт транзакции по подпискам за наступившие даты списания (категория «Подписки»)."""
+    today = date.today()
+    subscriptions = db.query(Subscription).filter(Subscription.user_id == user_id).all()
+    for sub in subscriptions:
+        start = sub.created_at.date() if hasattr(sub.created_at, "date") else sub.created_at
+        for pay_date in iter_payment_dates_from_to(sub.payment_day, start, today):
+            exists = db.query(SubscriptionPayment).filter(
+                SubscriptionPayment.subscription_id == sub.id,
+                SubscriptionPayment.payment_date == pay_date
+            ).first()
+            if exists:
+                continue
+            db.add(SubscriptionPayment(subscription_id=sub.id, payment_date=pay_date))
+            tx = Transaction(
+                user_id=user_id,
+                description=sub.name,
+                amount=sub.amount,
+                is_income=False,
+                category=SUBSCRIPTIONS_CATEGORY,
+                created_at=datetime.combine(pay_date, datetime.min.time()),
+            )
+            db.add(tx)
+    db.commit()
 
 
 def _subscription_to_response(sub: Subscription) -> SubscriptionResponse:
@@ -47,7 +75,8 @@ async def get_subscriptions(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Получение списка подписок пользователя. next_payment_date вычисляется на лету."""
+    """Получение списка подписок пользователя. Наступившие даты списания превращаются в транзакции (категория «Подписки»)."""
+    _ensure_subscription_transactions(db, current_user.id)
     subscriptions = db.query(Subscription).filter(
         Subscription.user_id == current_user.id
     ).order_by(Subscription.payment_day.asc()).all()

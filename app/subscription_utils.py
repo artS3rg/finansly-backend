@@ -3,6 +3,25 @@ import calendar
 from datetime import date
 
 
+def iter_payment_dates_from_to(payment_day: int, start: date, end: date):
+    """
+    Перебирает все даты списания от start до end (включительно) для данного payment_day.
+    Если дня нет в месяце (напр. 31 в феврале), дата списания — 1-е число следующего месяца.
+    """
+    y, m = start.year, start.month
+    while date(y, m, 1) <= end:
+        _, last_day = calendar.monthrange(y, m)
+        if payment_day <= last_day:
+            d = date(y, m, payment_day)
+        else:
+            d = date(y, m + 1, 1) if m < 12 else date(y + 1, 1, 1)
+        if start <= d <= end:
+            yield d
+        m += 1
+        if m > 12:
+            y, m = y + 1, 1
+
+
 def get_next_payment_date(payment_day: int) -> date:
     """
     Возвращает следующую дату списания с учётом числа дней в месяце.

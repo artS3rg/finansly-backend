@@ -18,6 +18,17 @@ class GoalUpdate(BaseModel):
     is_completed: bool | None = None
 
 
+class GoalParticipantResponse(BaseModel):
+    user_id: int
+    username: str | None
+    avatar_url: str | None
+    contributed_amount: float
+    is_creator: bool = False
+
+    class Config:
+        from_attributes = True
+
+
 class GoalResponse(BaseModel):
     id: int
     user_id: int
@@ -32,3 +43,12 @@ class GoalResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class GoalDetailResponse(GoalResponse):
+    participants: list[GoalParticipantResponse] = []
+
+
+class AddParticipantRequest(BaseModel):
+    email: str | None = None
+    user_id: int | None = None

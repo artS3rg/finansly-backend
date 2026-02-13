@@ -20,3 +20,4 @@ class User(Base):
     transactions = relationship("Transaction", back_populates="user")
     goals = relationship("Goal", back_populates="user")
     subscriptions = relationship("Subscription", back_populates="user")
+    goal_memberships = relationship("GoalMember", back_populates="user")
