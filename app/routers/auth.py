@@ -19,11 +19,13 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
             detail="Email already registered"
         )
     
-    # Создание нового пользователя
+    # Создание нового пользователя (никнейм опционален)
     hashed_password = get_password_hash(user_data.password)
+    username = (user_data.username or "").strip() or None
     db_user = User(
         email=user_data.email,
-        hashed_password=hashed_password
+        hashed_password=hashed_password,
+        username=username,
     )
     db.add(db_user)
     db.commit()
