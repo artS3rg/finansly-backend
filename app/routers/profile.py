@@ -213,13 +213,23 @@ def _public_profile_response(user: User, db: Session) -> PublicProfileResponse:
 async def update_profile(
     profile_update: ProfileUpdate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    """Обновление профиля пользователя"""
-    update_data = profile_update.dict(exclude_unset=True)
+    """Обновление профиля пользователя (почта, никнейм и т.д.)."""
+    update_data = profile_update.model_dump(exclude_unset=True)
+    if "email" in update_data:
+        new_email = (update_data["email"] or "").strip().lower()
+        if new_email:
+            other = db.query(User).filter(User.email == new_email, User.id != current_user.id).first()
+            if other:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Email already registered",
+                )
+            update_data["email"] = new_email
     for field, value in update_data.items():
-        setattr(current_user, field, value)
-    
+        if value is not None:
+            setattr(current_user, field, value)
     db.commit()
     db.refresh(current_user)
     return _profile_response(current_user, db)

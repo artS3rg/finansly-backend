@@ -33,6 +33,7 @@ class PublicProfileResponse(BaseModel):
 
 
 class ProfileUpdate(BaseModel):
+    email: str | None = None
     username: str | None = None
     avatar_url: str | None = None
     banner_url: str | None = None
