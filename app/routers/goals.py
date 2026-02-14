@@ -230,6 +230,40 @@ async def complete_goal(
     )
 
 
+@router.post("/{goal_id}/resume", response_model=GoalDetailResponse)
+async def resume_goal(
+    goal_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Возобновить цель (снять отметку о завершении). Только создатель."""
+    db_goal = db.query(Goal).filter(
+        Goal.id == goal_id,
+        Goal.user_id == current_user.id,
+    ).first()
+    if not db_goal:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+    db_goal.is_completed = False
+    db_goal.completed_at = None
+    db.commit()
+    _recalc_goal_current_amount(db, db_goal)
+    db.refresh(db_goal)
+    participants = _build_participants(db, db_goal)
+    return GoalDetailResponse(
+        id=db_goal.id,
+        user_id=db_goal.user_id,
+        title=db_goal.title,
+        start_amount=db_goal.start_amount,
+        finish_amount=db_goal.finish_amount,
+        current_amount=db_goal.current_amount,
+        party_count=db_goal.party_count,
+        created_at=db_goal.created_at,
+        completed_at=db_goal.completed_at,
+        is_completed=db_goal.is_completed,
+        participants=participants,
+    )
+
+
 @router.post("/{goal_id}/participants", response_model=GoalDetailResponse)
 async def add_participant(
     goal_id: int,
