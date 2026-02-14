@@ -53,3 +53,7 @@ class GoalDetailResponse(GoalResponse):
 class AddParticipantRequest(BaseModel):
     email: str | None = None
     user_id: int | None = None
+
+
+class ContributeRequest(BaseModel):
+    amount: float

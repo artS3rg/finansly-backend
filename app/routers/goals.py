@@ -13,6 +13,7 @@ from app.schemas.goal import (
     GoalDetailResponse,
     GoalParticipantResponse,
     AddParticipantRequest,
+    ContributeRequest,
 )
 from app.auth import get_current_user
 
@@ -263,6 +264,106 @@ async def add_participant(
     )
     db.add(member)
     db.commit()
+    _recalc_goal_current_amount(db, db_goal)
+    db.refresh(db_goal)
+    participants = _build_participants(db, db_goal)
+    return GoalDetailResponse(
+        id=db_goal.id,
+        user_id=db_goal.user_id,
+        title=db_goal.title,
+        start_amount=db_goal.start_amount,
+        finish_amount=db_goal.finish_amount,
+        current_amount=db_goal.current_amount,
+        party_count=db_goal.party_count,
+        created_at=db_goal.created_at,
+        completed_at=db_goal.completed_at,
+        is_completed=db_goal.is_completed,
+        participants=participants,
+    )
+
+
+def _recalc_goal_current_amount(db: Session, goal: Goal) -> None:
+    """Пересчитывает current_amount = сумма вкладов всех участников (вклад создателя = start_amount)."""
+    total_contributed = db.query(GoalMember.contributed_amount).filter(
+        GoalMember.goal_id == goal.id
+    ).all()
+    goal.current_amount = sum(t[0] for t in total_contributed)
+    db.commit()
+
+
+@router.put("/{goal_id}/contribute", response_model=GoalDetailResponse)
+async def contribute(
+    goal_id: int,
+    body: ContributeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Внести свою сумму в цель. Участник обновляет свой вклад. Сумма не может быть отрицательной."""
+    if body.amount < 0:
+        raise HTTPException(status_code=400, detail="Сумма не может быть отрицательной")
+    db_goal = db.query(Goal).filter(Goal.id == goal_id).first()
+    if not db_goal:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+    member = db.query(GoalMember).filter(
+        GoalMember.goal_id == goal_id,
+        GoalMember.user_id == current_user.id,
+    ).first()
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Вы не участник этой цели",
+        )
+    member.contributed_amount = body.amount
+    db.commit()
+    _recalc_goal_current_amount(db, db_goal)
+    db.refresh(db_goal)
+    participants = _build_participants(db, db_goal)
+    return GoalDetailResponse(
+        id=db_goal.id,
+        user_id=db_goal.user_id,
+        title=db_goal.title,
+        start_amount=db_goal.start_amount,
+        finish_amount=db_goal.finish_amount,
+        current_amount=db_goal.current_amount,
+        party_count=db_goal.party_count,
+        created_at=db_goal.created_at,
+        completed_at=db_goal.completed_at,
+        is_completed=db_goal.is_completed,
+        participants=participants,
+    )
+
+
+@router.delete("/{goal_id}/participants/{user_id}", response_model=GoalDetailResponse)
+async def remove_participant(
+    goal_id: int,
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Удалить участника из цели. Только создатель. Нельзя удалить создателя."""
+    db_goal = db.query(Goal).filter(
+        Goal.id == goal_id,
+        Goal.user_id == current_user.id,
+    ).first()
+    if not db_goal:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+    if user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Нельзя удалить создателя цели",
+        )
+    member = db.query(GoalMember).filter(
+        GoalMember.goal_id == goal_id,
+        GoalMember.user_id == user_id,
+    ).first()
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Участник не найден",
+        )
+    db.delete(member)
+    db.commit()
+    _recalc_goal_current_amount(db, db_goal)
     db.refresh(db_goal)
     participants = _build_participants(db, db_goal)
     return GoalDetailResponse(

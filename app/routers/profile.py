@@ -8,7 +8,9 @@ from app.database import get_db
 from app.models.user import User
 from app.models.goal import Goal
 from app.models.transaction import Transaction
-from app.schemas.profile import ProfileResponse, ProfileUpdate
+from app.schemas.profile import ProfileResponse, ProfileUpdate, PublicProfileResponse
+from app.schemas.transaction import TransactionResponse
+from app.schemas.goal import GoalResponse
 from app.auth import get_current_user
 
 router = APIRouter()
@@ -50,6 +52,19 @@ async def get_profile(
 ):
     """Получение профиля пользователя со статистикой"""
     return _profile_response(current_user, db)
+
+
+@router.get("/{user_id}", response_model=PublicProfileResponse)
+async def get_public_profile(
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Публичный профиль пользователя: аватар, баннер, статистика, последняя транзакция, ближайшая цель."""
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Пользователь не найден")
+    return _public_profile_response(user, db)
 
 
 @router.post("/avatar", response_model=ProfileResponse)
@@ -125,6 +140,72 @@ def _profile_response(current_user: User, db: Session) -> ProfileResponse:
         completed_goals=completed_goals,
         total_transactions=total_transactions,
         financial_index=financial_index,
+    )
+
+
+def _public_profile_response(user: User, db: Session) -> PublicProfileResponse:
+    """Формирует публичный профиль пользователя с последней транзакцией и ближайшей целью."""
+    total_goals = db.query(Goal).filter(Goal.user_id == user.id).count()
+    completed_goals = db.query(Goal).filter(
+        Goal.user_id == user.id,
+        Goal.is_completed == True,
+    ).count()
+    total_transactions = db.query(Transaction).filter(Transaction.user_id == user.id).count()
+    transactions = db.query(Transaction).filter(Transaction.user_id == user.id).all()
+    total_income = sum(t.amount for t in transactions if t.is_income)
+    total_expense = sum(t.amount for t in transactions if not t.is_income)
+    expense_ratio = total_income / total_expense if total_expense > 0 else 10.0
+    financial_index = min(
+        100,
+        max(0, int((expense_ratio * 20) + (completed_goals * 5) + (total_goals * 2))),
+    )
+    last_tx = (
+        db.query(Transaction)
+        .filter(Transaction.user_id == user.id)
+        .order_by(Transaction.created_at.desc())
+        .first()
+    )
+    last_transaction = (
+        TransactionResponse.model_validate(last_tx) if last_tx else None
+    )
+    active_goals = (
+        db.query(Goal)
+        .filter(Goal.user_id == user.id, Goal.is_completed == False)
+        .order_by(Goal.created_at.desc())
+        .all()
+    )
+    nearest_goal = None
+    if active_goals:
+        def progress(g):
+            r = g.finish_amount - g.start_amount
+            if r <= 0:
+                return 1.0
+            return (g.current_amount - g.start_amount) / r
+        nearest_goal_obj = max(active_goals, key=progress)
+        nearest_goal = GoalResponse(
+            id=nearest_goal_obj.id,
+            user_id=nearest_goal_obj.user_id,
+            title=nearest_goal_obj.title,
+            start_amount=nearest_goal_obj.start_amount,
+            finish_amount=nearest_goal_obj.finish_amount,
+            current_amount=nearest_goal_obj.current_amount,
+            party_count=nearest_goal_obj.party_count,
+            created_at=nearest_goal_obj.created_at,
+            completed_at=nearest_goal_obj.completed_at,
+            is_completed=nearest_goal_obj.is_completed,
+        )
+    return PublicProfileResponse(
+        id=user.id,
+        email=user.email,
+        username=user.username,
+        avatar_url=user.avatar_url,
+        banner_url=user.banner_url,
+        total_goals=total_goals,
+        completed_goals=completed_goals,
+        total_transactions=total_transactions,
+        financial_index=financial_index,
+        last_transaction=last_transaction,
+        nearest_goal=nearest_goal,
     )
 
 
