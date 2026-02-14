@@ -25,13 +25,17 @@ def _build_participants(db: Session, goal: Goal) -> list[GoalParticipantResponse
     result = []
     creator = db.get(User, goal.user_id)
     if creator:
+        creator_member = next(
+            (m for m in goal.members if m.user_id == goal.user_id),
+            None,
+        )
         result.append(
             GoalParticipantResponse(
                 user_id=creator.id,
                 username=creator.username,
                 email=creator.email,
                 avatar_url=creator.avatar_url,
-                contributed_amount=goal.start_amount,
+                contributed_amount=creator_member.contributed_amount if creator_member else 0,
                 is_creator=True,
             )
         )
@@ -74,10 +78,12 @@ async def create_goal(
     member = GoalMember(
         goal_id=db_goal.id,
         user_id=current_user.id,
-        contributed_amount=goal.start_amount,
+        contributed_amount=0,
     )
     db.add(member)
     db.commit()
+    _recalc_goal_current_amount(db, db_goal)
+    db.refresh(db_goal)
     return db_goal
 
 
@@ -283,11 +289,11 @@ async def add_participant(
 
 
 def _recalc_goal_current_amount(db: Session, goal: Goal) -> None:
-    """Пересчитывает current_amount = сумма вкладов всех участников (вклад создателя = start_amount)."""
+    """Пересчитывает current_amount = start_amount + сумма вкладов всех участников."""
     total_contributed = db.query(GoalMember.contributed_amount).filter(
         GoalMember.goal_id == goal.id
     ).all()
-    goal.current_amount = sum(t[0] for t in total_contributed)
+    goal.current_amount = goal.start_amount + sum(t[0] for t in total_contributed)
     db.commit()
 
 
