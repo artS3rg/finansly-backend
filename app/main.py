@@ -11,7 +11,7 @@ for _k in ("PGPASSFILE", "PGSYSCONFDIR", "PGSERVICE"):
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from app.routers import auth, transactions, goals, subscriptions, analytics, profile, ai_coach
+from app.routers import auth, transactions, goals, subscriptions, analytics, profile, ai_coach, bonus
 from app.database import init_db
 
 # Инициализация базы данных при старте
@@ -40,6 +40,7 @@ app.include_router(subscriptions.router, prefix="/api/subscriptions", tags=["Sub
 app.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"])
 app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
 app.include_router(ai_coach.router, prefix="/api/ai-coach", tags=["AI Coach"])
+app.include_router(bonus.router, prefix="/api/bonus", tags=["Bonus"])
 
 # Раздача загруженных аватарок и баннеров (uploads/avatars, uploads/banners)
 _uploads = Path(os.getenv("UPLOAD_DIR", "uploads"))

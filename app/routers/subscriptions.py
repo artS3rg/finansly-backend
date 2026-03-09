@@ -8,6 +8,7 @@ from app.models.subscription import Subscription, SubscriptionPayment
 from app.models.transaction import Transaction
 from app.schemas.subscription import SubscriptionCreate, SubscriptionResponse, SubscriptionUpdate
 from app.auth import get_current_user
+from app.routers.bonus import try_complete_task
 from app.subscription_utils import get_next_payment_date, iter_payment_dates_from_to
 
 router = APIRouter()
@@ -69,6 +70,8 @@ async def create_subscription(
     db.add(db_subscription)
     db.commit()
     db.refresh(db_subscription)
+    try_complete_task(db, current_user.id, "create_subscription")
+    db.commit()
     return _subscription_to_response(db_subscription)
 
 

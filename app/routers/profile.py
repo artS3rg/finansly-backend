@@ -6,7 +6,9 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
+from app.models.user_bonus import UserBonus
 from app.models.goal import Goal
+from app.models.subscription import Subscription
 from app.models.transaction import Transaction
 from app.schemas.profile import ProfileResponse, ProfileUpdate, PublicProfileResponse
 from app.schemas.transaction import TransactionResponse
@@ -14,6 +16,93 @@ from app.schemas.goal import GoalResponse
 from app.auth import get_current_user
 
 router = APIRouter()
+
+# --- Индекс финансового здоровья (0–100): учитывает доходы, расходы, цели, подписки, сбережения ---
+
+
+def _compute_financial_index(
+    *,
+    total_income: float,
+    total_expense: float,
+    total_transactions: int,
+    total_goals: int,
+    completed_goals: int,
+    active_goals_with_progress: int,
+    subscriptions_monthly_sum: float,
+    subscriptions_count: int,
+) -> int:
+    """
+    Индекс от 0 до 100: насколько разумно ведутся финансы.
+    100 = учёт ведётся, расходы под контролем, есть цели и сбережения.
+    """
+    score = 0.0
+
+    # 1. Баланс доход/расход (макс 30)
+    if total_income > 0:
+        ratio = total_expense / total_income
+        if ratio <= 0.5:
+            score += 30
+        elif ratio <= 0.7:
+            score += 25
+        elif ratio <= 0.85:
+            score += 20
+        elif ratio <= 1.0:
+            score += 10
+        # ratio > 1 → 0
+    # нет дохода — 0 за этот блок
+
+    # 2. Активность учёта (макс 25): есть и доходы, и расходы, достаточное число операций
+    has_income = total_income > 0
+    has_expense = total_expense > 0
+    if has_income:
+        score += 5
+    if has_expense:
+        score += 5
+    if total_transactions >= 20:
+        score += 15
+    elif total_transactions >= 10:
+        score += 10
+    elif total_transactions >= 5:
+        score += 5
+
+    # 3. Цели (макс 25): есть цели, часть выполнена, есть прогресс по активным
+    if total_goals > 0:
+        score += 5
+    if completed_goals >= 3:
+        score += 15
+    elif completed_goals >= 2:
+        score += 10
+    elif completed_goals >= 1:
+        score += 5
+    if active_goals_with_progress > 0:
+        score += 5
+
+    # 4. Подписки под контролем (макс 10)
+    if subscriptions_count == 0:
+        score += 10
+    elif total_income > 0:
+        sub_ratio = subscriptions_monthly_sum / total_income
+        if sub_ratio < 0.1:
+            score += 10
+        elif sub_ratio < 0.2:
+            score += 7
+        elif sub_ratio < 0.3:
+            score += 4
+
+    # 5. Сбережения (макс 10): положительный баланс и доля от дохода
+    if total_income > 0:
+        balance = total_income - total_expense
+        if balance > 0:
+            savings_rate = balance / total_income
+            if savings_rate >= 0.2:
+                score += 10
+            elif savings_rate >= 0.1:
+                score += 6
+            else:
+                score += 3
+
+    return min(100, max(0, int(round(score))))
+
 
 # Папка для загруженных файлов (относительно рабочей директории при запуске)
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "uploads"))
@@ -111,24 +200,35 @@ async def upload_banner(
 
 def _profile_response(current_user: User, db: Session) -> ProfileResponse:
     """Формирует ProfileResponse со статистикой для текущего пользователя."""
-    total_goals = db.query(Goal).filter(Goal.user_id == current_user.id).count()
-    completed_goals = db.query(Goal).filter(
-        Goal.user_id == current_user.id,
-        Goal.is_completed == True,
-    ).count()
-    total_transactions = db.query(Transaction).filter(
-        Transaction.user_id == current_user.id
-    ).count()
+    goals = db.query(Goal).filter(Goal.user_id == current_user.id).all()
+    total_goals = len(goals)
+    completed_goals = sum(1 for g in goals if g.is_completed)
+    active_goals_with_progress = sum(
+        1 for g in goals
+        if not g.is_completed and g.current_amount > g.start_amount
+    )
     transactions = db.query(Transaction).filter(
         Transaction.user_id == current_user.id
     ).all()
+    total_transactions = len(transactions)
     total_income = sum(t.amount for t in transactions if t.is_income)
     total_expense = sum(t.amount for t in transactions if not t.is_income)
-    expense_ratio = total_income / total_expense if total_expense > 0 else 10.0
-    financial_index = min(
-        100,
-        max(0, int((expense_ratio * 20) + (completed_goals * 5) + (total_goals * 2))),
+    subs = db.query(Subscription).filter(Subscription.user_id == current_user.id).all()
+    subscriptions_count = len(subs)
+    subscriptions_monthly_sum = sum(s.amount for s in subs)
+    financial_index = _compute_financial_index(
+        total_income=total_income,
+        total_expense=total_expense,
+        total_transactions=total_transactions,
+        total_goals=total_goals,
+        completed_goals=completed_goals,
+        active_goals_with_progress=active_goals_with_progress,
+        subscriptions_monthly_sum=subscriptions_monthly_sum,
+        subscriptions_count=subscriptions_count,
     )
+    bonus_row = db.query(UserBonus).filter(UserBonus.user_id == current_user.id).first()
+    bonus_points = bonus_row.points if bonus_row else 0
+    level = (bonus_points // 100) + 1
     return ProfileResponse(
         id=current_user.id,
         email=current_user.email,
@@ -140,24 +240,36 @@ def _profile_response(current_user: User, db: Session) -> ProfileResponse:
         completed_goals=completed_goals,
         total_transactions=total_transactions,
         financial_index=financial_index,
+        bonus_points=bonus_points,
+        level=level,
     )
 
 
 def _public_profile_response(user: User, db: Session) -> PublicProfileResponse:
     """Формирует публичный профиль пользователя с последней транзакцией и ближайшей целью."""
-    total_goals = db.query(Goal).filter(Goal.user_id == user.id).count()
-    completed_goals = db.query(Goal).filter(
-        Goal.user_id == user.id,
-        Goal.is_completed == True,
-    ).count()
-    total_transactions = db.query(Transaction).filter(Transaction.user_id == user.id).count()
+    goals = db.query(Goal).filter(Goal.user_id == user.id).all()
+    total_goals = len(goals)
+    completed_goals = sum(1 for g in goals if g.is_completed)
+    active_goals_with_progress = sum(
+        1 for g in goals
+        if not g.is_completed and g.current_amount > g.start_amount
+    )
     transactions = db.query(Transaction).filter(Transaction.user_id == user.id).all()
+    total_transactions = len(transactions)
     total_income = sum(t.amount for t in transactions if t.is_income)
     total_expense = sum(t.amount for t in transactions if not t.is_income)
-    expense_ratio = total_income / total_expense if total_expense > 0 else 10.0
-    financial_index = min(
-        100,
-        max(0, int((expense_ratio * 20) + (completed_goals * 5) + (total_goals * 2))),
+    subs = db.query(Subscription).filter(Subscription.user_id == user.id).all()
+    subscriptions_count = len(subs)
+    subscriptions_monthly_sum = sum(s.amount for s in subs)
+    financial_index = _compute_financial_index(
+        total_income=total_income,
+        total_expense=total_expense,
+        total_transactions=total_transactions,
+        total_goals=total_goals,
+        completed_goals=completed_goals,
+        active_goals_with_progress=active_goals_with_progress,
+        subscriptions_monthly_sum=subscriptions_monthly_sum,
+        subscriptions_count=subscriptions_count,
     )
     last_tx = (
         db.query(Transaction)
@@ -194,6 +306,9 @@ def _public_profile_response(user: User, db: Session) -> PublicProfileResponse:
             completed_at=nearest_goal_obj.completed_at,
             is_completed=nearest_goal_obj.is_completed,
         )
+    bonus_row = db.query(UserBonus).filter(UserBonus.user_id == user.id).first()
+    bonus_points = bonus_row.points if bonus_row else 0
+    level = (bonus_points // 100) + 1
     return PublicProfileResponse(
         id=user.id,
         email=user.email,
@@ -204,6 +319,8 @@ def _public_profile_response(user: User, db: Session) -> PublicProfileResponse:
         completed_goals=completed_goals,
         total_transactions=total_transactions,
         financial_index=financial_index,
+        bonus_points=bonus_points,
+        level=level,
         last_transaction=last_transaction,
         nearest_goal=nearest_goal,
     )

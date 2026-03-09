@@ -7,6 +7,7 @@ from app.models.user import User
 from app.models.transaction import Transaction
 from app.schemas.transaction import TransactionCreate, TransactionResponse, TransactionUpdate
 from app.auth import get_current_user
+from app.routers.bonus import try_complete_task
 
 router = APIRouter()
 
@@ -28,6 +29,12 @@ async def create_transaction(
     db.add(db_transaction)
     db.commit()
     db.refresh(db_transaction)
+    try_complete_task(db, current_user.id, "create_transaction")
+    if db_transaction.is_income:
+        try_complete_task(db, current_user.id, "add_income")
+    else:
+        try_complete_task(db, current_user.id, "log_expense")
+    db.commit()
     return db_transaction
 
 

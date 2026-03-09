@@ -15,6 +15,8 @@ class ProfileResponse(BaseModel):
     completed_goals: int
     total_transactions: int
     financial_index: int  # Индекс финансового здоровья
+    bonus_points: int = 0
+    level: int = 1  # уровень: 0 очков = 1, 100 = 2, ...
 
 
 class PublicProfileResponse(BaseModel):
@@ -28,6 +30,8 @@ class PublicProfileResponse(BaseModel):
     completed_goals: int
     total_transactions: int
     financial_index: int
+    bonus_points: int = 0
+    level: int = 1
     last_transaction: TransactionResponse | None = None
     nearest_goal: GoalResponse | None = None
 

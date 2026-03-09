@@ -16,6 +16,7 @@ from app.schemas.goal import (
     ContributeRequest,
 )
 from app.auth import get_current_user
+from app.routers.bonus import try_complete_task
 
 router = APIRouter()
 
@@ -75,6 +76,8 @@ async def create_goal(
     db.add(db_goal)
     db.commit()
     db.refresh(db_goal)
+    try_complete_task(db, current_user.id, "create_goal")
+    db.commit()
     member = GoalMember(
         goal_id=db_goal.id,
         user_id=current_user.id,
@@ -162,6 +165,9 @@ async def update_goal(
         setattr(db_goal, field, value)
     db.commit()
     db.refresh(db_goal)
+    if db_goal.is_completed:
+        try_complete_task(db, current_user.id, "complete_goal")
+        db.commit()
     participants = _build_participants(db, db_goal)
     return GoalDetailResponse(
         id=db_goal.id,
@@ -214,6 +220,8 @@ async def complete_goal(
     db_goal.completed_at = datetime.utcnow()
     db.commit()
     db.refresh(db_goal)
+    try_complete_task(db, current_user.id, "complete_goal")
+    db.commit()
     participants = _build_participants(db, db_goal)
     return GoalDetailResponse(
         id=db_goal.id,
