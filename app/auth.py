@@ -15,6 +15,7 @@ from app.models.user import User
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here-change-in-production")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", str(30 * 24 * 60)))
+TOTP_PENDING_EXPIRE_MINUTES = int(os.getenv("TOTP_PENDING_EXPIRE_MINUTES", "10"))
 
 logger = logging.getLogger(__name__)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -50,6 +51,38 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode.update({"exp": int(expire.timestamp())})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
+
+def create_totp_pending_token(user_id: int) -> str:
+    """Краткоживущий JWT после верного пароля; нужен для завершения входа по TOTP."""
+    now_utc = datetime.now(timezone.utc)
+    expire = now_utc + timedelta(minutes=TOTP_PENDING_EXPIRE_MINUTES)
+    to_encode = {
+        "sub": str(user_id),
+        "scope": "totp_pending",
+        "exp": int(expire.timestamp()),
+    }
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def decode_totp_pending_token(token: str) -> int:
+    """Возвращает user_id или бросает HTTPException."""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired pending login token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        raise credentials_exception
+    if payload.get("scope") != "totp_pending":
+        raise credentials_exception
+    raw_sub = payload.get("sub")
+    try:
+        return int(raw_sub)
+    except (TypeError, ValueError):
+        raise credentials_exception
 
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:

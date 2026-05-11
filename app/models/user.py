@@ -15,7 +15,10 @@ class User(Base):
     banner_url = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     is_active = Column(Boolean, default=True)
-    
+    totp_enabled = Column(Boolean, default=False)
+    totp_secret = Column(String, nullable=True)
+    totp_pending_secret = Column(String, nullable=True)
+
     # Связи
     transactions = relationship("Transaction", back_populates="user")
     goals = relationship("Goal", back_populates="user")

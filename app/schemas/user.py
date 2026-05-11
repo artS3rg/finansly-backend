@@ -19,6 +19,7 @@ class UserResponse(BaseModel):
     username: str | None
     created_at: datetime
     is_active: bool
+    totp_enabled: bool = False
 
     class Config:
         from_attributes = True
@@ -27,3 +28,30 @@ class UserResponse(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+
+class LoginResponse(BaseModel):
+    """Ответ POST /login: либо токен, либо запрос второго фактора."""
+
+    access_token: str | None = None
+    token_type: str = "bearer"
+    requires_totp: bool = False
+    pending_token: str | None = None
+
+
+class CompleteTotpLoginRequest(BaseModel):
+    pending_token: str
+    code: str
+
+
+class TotpSetupStartResponse(BaseModel):
+    secret: str
+    otpauth_url: str
+
+
+class TotpSetupConfirmRequest(BaseModel):
+    code: str
+
+
+class TotpDisableRequest(BaseModel):
+    password: str
