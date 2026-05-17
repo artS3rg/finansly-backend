@@ -14,7 +14,7 @@ from app.models.user import User
 # Настройки JWT
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here-change-in-production")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", str(30 * 24 * 60)))
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 TOTP_PENDING_EXPIRE_MINUTES = int(os.getenv("TOTP_PENDING_EXPIRE_MINUTES", "10"))
 
 logger = logging.getLogger(__name__)

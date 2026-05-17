@@ -12,6 +12,28 @@ from app.routers.bonus import try_complete_task
 router = APIRouter()
 
 
+def _apply_transaction_filters(
+    query,
+    *,
+    is_income: Optional[bool] = None,
+    category: Optional[str] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    search: Optional[str] = None,
+):
+    if is_income is not None:
+        query = query.filter(Transaction.is_income == is_income)
+    if category:
+        query = query.filter(Transaction.category == category)
+    if start_date:
+        query = query.filter(Transaction.created_at >= start_date)
+    if end_date:
+        query = query.filter(Transaction.created_at <= end_date)
+    if search:
+        query = query.filter(Transaction.description.ilike(f"%{search}%"))
+    return query
+
+
 @router.post("/", response_model=TransactionResponse, status_code=status.HTTP_201_CREATED)
 async def create_transaction(
     transaction: TransactionCreate,
@@ -46,35 +68,45 @@ async def get_transactions(
     category: Optional[str] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
+    search: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Получение списка транзакций с фильтрацией"""
     query = db.query(Transaction).filter(Transaction.user_id == current_user.id)
-    
-    if is_income is not None:
-        query = query.filter(Transaction.is_income == is_income)
-    
-    if category:
-        query = query.filter(Transaction.category == category)
-    
-    if start_date:
-        query = query.filter(Transaction.created_at >= start_date)
-    
-    if end_date:
-        query = query.filter(Transaction.created_at <= end_date)
-    
+    query = _apply_transaction_filters(
+        query,
+        is_income=is_income,
+        category=category,
+        start_date=start_date,
+        end_date=end_date,
+        search=search,
+    )
     transactions = query.order_by(Transaction.created_at.desc()).offset(skip).limit(limit).all()
     return transactions
 
 
 @router.get("/stats/summary", response_model=dict)
 async def get_transaction_summary(
+    is_income: Optional[bool] = None,
+    category: Optional[str] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    search: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Получение статистики по транзакциям"""
-    transactions = db.query(Transaction).filter(Transaction.user_id == current_user.id).all()
+    query = db.query(Transaction).filter(Transaction.user_id == current_user.id)
+    query = _apply_transaction_filters(
+        query,
+        is_income=is_income,
+        category=category,
+        start_date=start_date,
+        end_date=end_date,
+        search=search,
+    )
+    transactions = query.all()
     
     total_income = sum(t.amount for t in transactions if t.is_income)
     total_expense = sum(t.amount for t in transactions if not t.is_income)

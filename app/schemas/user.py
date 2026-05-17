@@ -27,16 +27,22 @@ class UserResponse(BaseModel):
 
 class Token(BaseModel):
     access_token: str
-    token_type: str
+    refresh_token: str
+    token_type: str = "bearer"
 
 
 class LoginResponse(BaseModel):
     """Ответ POST /login: либо токен, либо запрос второго фактора."""
 
     access_token: str | None = None
+    refresh_token: str | None = None
     token_type: str = "bearer"
     requires_totp: bool = False
     pending_token: str | None = None
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
 
 
 class CompleteTotpLoginRequest(BaseModel):

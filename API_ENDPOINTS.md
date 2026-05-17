@@ -35,8 +35,31 @@ Body: {
 }
 Response: {
   "access_token": "eyJ...",
+  "refresh_token": "...",
   "token_type": "bearer"
 }
+```
+
+### Обновить access-токен
+```
+POST /api/auth/refresh
+Body: {
+  "refresh_token": "..."
+}
+Response: {
+  "access_token": "eyJ...",
+  "refresh_token": "...",
+  "token_type": "bearer"
+}
+```
+
+### Выход (отзыв refresh)
+```
+POST /api/auth/logout
+Body: {
+  "refresh_token": "..."
+}
+Response: 204 No Content
 ```
 
 ### Получить текущего пользователя

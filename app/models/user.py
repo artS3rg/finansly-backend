@@ -24,3 +24,4 @@ class User(Base):
     goals = relationship("Goal", back_populates="user")
     subscriptions = relationship("Subscription", back_populates="user")
     goal_memberships = relationship("GoalMember", back_populates="user")
+    refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")

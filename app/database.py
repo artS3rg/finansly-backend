@@ -47,4 +47,6 @@ def get_db():
 
 def init_db():
     """Инициализация базы данных"""
+    import app.models  # noqa: F401 — регистрация всех моделей на Base
+
     Base.metadata.create_all(bind=engine)

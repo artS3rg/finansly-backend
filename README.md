@@ -96,7 +96,8 @@ DATABASE_NAME=finansly
 
 SECRET_KEY=your-secret-key-here-change-in-production
 ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=43200
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+REFRESH_TOKEN_EXPIRE_DAYS=30
 ```
 
 ### 3. Инициализация базы данных
@@ -124,7 +125,9 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 ### Аутентификация (`/api/auth`)
 
 - `POST /api/auth/register` - Регистрация нового пользователя
-- `POST /api/auth/login` - Вход пользователя (получение JWT токена)
+- `POST /api/auth/login` - Вход (access + refresh JWT)
+- `POST /api/auth/refresh` - Обновление access-токена по refresh-токену
+- `POST /api/auth/logout` - Отзыв refresh-токена
 - `GET /api/auth/me` - Получение информации о текущем пользователе
 
 ### Транзакции (`/api/transactions`)
@@ -182,11 +185,13 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ## Аутентификация
 
-API использует JWT токены для аутентификации. После успешного входа (`/api/auth/login`), токен нужно передавать в заголовке:
+API использует пару access JWT (короткий срок) и opaque refresh-токен (хранится в БД). После входа (`/api/auth/login`) передавайте access в заголовке:
 
 ```
-Authorization: Bearer <your_token>
+Authorization: Bearer <access_token>
 ```
+
+Для обновления access: `POST /api/auth/refresh` с телом `{"refresh_token": "..."}` (refresh ротируется).
 
 ## База данных
 

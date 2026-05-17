@@ -103,3 +103,10 @@ def test_create_access_token_contains_sub_and_exp():
 
     assert payload["sub"] == "42"
     assert isinstance(payload["exp"], int)
+
+
+def test_refresh_token_hash_is_deterministic():
+    from app.refresh_tokens import _hash_token
+
+    assert _hash_token("sample-refresh-token") == _hash_token("sample-refresh-token")
+    assert _hash_token("a") != _hash_token("b")

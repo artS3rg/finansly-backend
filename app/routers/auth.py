@@ -12,15 +12,16 @@ from app.schemas.user import (
     TotpSetupStartResponse,
     TotpSetupConfirmRequest,
     TotpDisableRequest,
+    RefreshTokenRequest,
 )
 from app.auth import (
     verify_password,
     get_password_hash,
-    create_access_token,
     get_current_user,
     create_totp_pending_token,
     decode_totp_pending_token,
 )
+from app.refresh_tokens import issue_token_pair, refresh_access_token, revoke_refresh_token
 from app.totp_utils import generate_totp_secret, provisioning_uri, verify_totp_code
 
 router = APIRouter()
@@ -64,8 +65,30 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
         pending = create_totp_pending_token(user.id)
         return LoginResponse(requires_totp=True, pending_token=pending)
 
-    access_token = create_access_token(data={"sub": str(user.id)})
-    return LoginResponse(access_token=access_token, token_type="bearer")
+    tokens = issue_token_pair(db, user)
+    return LoginResponse(
+        access_token=tokens["access_token"],
+        refresh_token=tokens["refresh_token"],
+        token_type=tokens["token_type"],
+    )
+
+
+@router.post("/refresh", response_model=Token)
+async def refresh_tokens(body: RefreshTokenRequest, db: Session = Depends(get_db)):
+    """Обновление access-токена по refresh-токену (с ротацией refresh)."""
+    tokens = refresh_access_token(db, body.refresh_token.strip())
+    return Token(**tokens)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(
+    body: RefreshTokenRequest | None = None,
+    db: Session = Depends(get_db),
+):
+    """Отзыв refresh-токена при выходе."""
+    if body and body.refresh_token.strip():
+        revoke_refresh_token(db, body.refresh_token.strip())
+    return None
 
 
 @router.post("/login/complete-totp", response_model=Token)
@@ -83,8 +106,8 @@ async def complete_totp_login(body: CompleteTotpLoginRequest, db: Session = Depe
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authenticator code",
         )
-    access_token = create_access_token(data={"sub": str(user.id)})
-    return Token(access_token=access_token, token_type="bearer")
+    tokens = issue_token_pair(db, user)
+    return Token(**tokens)
 
 
 @router.get("/me", response_model=UserResponse)
